@@ -1,0 +1,4 @@
+*.out
+
+# workspace for editors
+*.code-workspace

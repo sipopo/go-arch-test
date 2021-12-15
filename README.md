@@ -1,3 +1,3 @@
 # go-arch-test
 
-First test commit
+Learn Golang Web Authentication, Encryption, JWT, HMAC, & OAuth with the Go Language
