@@ -52,7 +52,6 @@ func foo(w http.ResponseWriter, r *http.Request) {
 	}
 	xp := []person{p1, p2}
 
-	
 	err := json.NewEncoder(w).Encode(xp)
 	if err != nil {
 		log.Println("Got bad encoding", err)
@@ -62,11 +61,11 @@ func foo(w http.ResponseWriter, r *http.Request) {
 }
 
 func bar(w http.ResponseWriter, r *http.Request) {
-	var p1 person
-	err := json.NewDecoder(r.Body).Decode(&p1)
+	var xp []person
+	err := json.NewDecoder(r.Body).Decode(&xp)
 	if err != nil {
 		log.Println("Decode bad data", err)
 	}
 
-	log.Println("Person:", p1)
+	log.Println("Person:", xp)
 }
