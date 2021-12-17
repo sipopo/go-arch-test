@@ -1,64 +1,39 @@
 package main
 
 import (
-	"encoding/json"
-	//	"fmt"
+	// "encoding/json"
+	"fmt"
 	"log"
-	"net/http"
+	"golang.org/x/crypto/bcrypt"
+
 )
 
-type person struct {
-	First string
-}
 
 func main() {
-	// p1 := person{
-	// 	First: "Jenny",
-	// }
+	password := "12345678"
 
-	// p2 := person{
-	// 	First: "George",
-	// }
-	// xp := []person{p1, p2}
+	hash, err := hashPassword(password)
+	if err != nil {
+		log.Fatalf("something wrong with hash %w", err)
+	}
+	fmt.Printf("You hash of password is %s \n", hash)
 
-	// bs, err := json.Marshal(xp)
-	// if err != nil {
-	// 	log.Panic(err)
-	// }
-
-	// fmt.Println("Print JSON", string(bs))
-
-	// xp2 := []person{}
-
-	// err = json.Unmarshal(bs, &xp2)
-	// if err != nil {
-	// 	log.Panic(err)
-	// }
-
-	// fmt.Println("Print go struct", xp2)
-
-	http.HandleFunc("/encode", foo)
-	http.HandleFunc("/decode", bar)
-	http.ListenAndServe(":8080", nil)
+	err = comparePassword("password", hash)
+	if err != nil {
+		log.Fatalf("Password is not correct, error: %s", err)
+	}
+	log.Println("Everething ok !")
 }
 
-func foo(w http.ResponseWriter, r *http.Request) {
-	p1 := person{
-		First: "Jenny",
-	}
-	err := json.NewEncoder(w).Encode(p1)
+func hashPassword(password string) ([]byte, error){
+	bs, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
-		log.Println("Got bad encoding", err)
+		return nil, err
 	}
-
+	return bs, nil
 }
 
-func bar(w http.ResponseWriter, r *http.Request) {
-	var p1 person
-	err := json.NewDecoder(r.Body).Decode(&p1)
-	if err != nil {
-		log.Println("Decode bad data", err)
-	}
-
-	log.Println("Person:", p1)
+func comparePassword(password string, hashedPass []byte) error {
+	err := bcrypt.CompareHashAndPassword(hashedPass, []byte(password))
+	return err
 }
