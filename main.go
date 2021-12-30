@@ -1,18 +1,38 @@
 package main
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
+	"strings"
 
 	"golang.org/x/crypto/bcrypt"
 )
 
-var users = make(map[string]string)
+var (
+	users          = make(map[string]string)
+	keyHmac []byte = []byte("some secret key")
+	sep     string = "."
+)
 
 func main() {
 	log.Println("Start progam")
+
+	log.Println("Check tokens")
+	session := "checksessionid"
+	token, err := createToken(session)
+	if err != nil {
+		log.Println("error in createToken %w", err)
+	}
+	checksession, err := parseToken(token)
+	if checksession != session {
+		log.Printf("error in compare tokens, %v", err)
+	}
+	// log.Printf("token: %v, session: %v", token, checksession)
+
 	http.HandleFunc("/", baseEndPoint)
 	http.HandleFunc("/register", registerEndPoint)
 	http.HandleFunc("/login", loginEndPoint)
@@ -58,7 +78,6 @@ func loginEndPoint(w http.ResponseWriter, r *http.Request) {
 	err := bcrypt.CompareHashAndPassword([]byte(users[username]), []byte(password))
 	if err != nil {
 		log.Printf("user %v has a wrong password", username)
-		// http.Redirect(w, r, "/register", http.StatusSeeOther)
 		io.WriteString(w, "You aren`t login!")
 		return
 	}
@@ -82,7 +101,7 @@ func registerEndPoint(w http.ResponseWriter, r *http.Request) {
 	}
 	hash, err := getHash([]byte(password))
 	if err != nil {
-		log.Printf("Can't get hash from password %w \n", err)
+		log.Printf("Can't get hash from password %v \n", err)
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
 	}
@@ -151,4 +170,35 @@ func showLoginForm() string {
 	</html>`
 
 	return html
+}
+
+func createToken(sessionID string) (string, error) {
+	mac := hmac.New(sha256.New, keyHmac)
+	_, err := mac.Write([]byte(sessionID))
+	if err != nil {
+		return "", fmt.Errorf("can't make hash for session")
+	}
+	token := sessionID + "." + string(mac.Sum(nil))
+	// log.Printf("token: %t", token)
+	return token, nil
+}
+
+func parseToken(signedToken string) (string, error) {
+	ss := strings.Split(signedToken, sep)
+	if len(ss) <= 1 || len(ss) > 2 {
+		return "", fmt.Errorf("wrogn token format")
+	}
+	sessionID := ss[0]
+	sessionMAC := []byte(ss[1])
+
+	mac := hmac.New(sha256.New, keyHmac)
+	_, err := mac.Write([]byte(sessionID))
+	if err != nil {
+		return "", fmt.Errorf("invalid token 1")
+	}
+	expectedMAC := mac.Sum(nil)
+	if !hmac.Equal(sessionMAC, expectedMAC) {
+		return "", fmt.Errorf("invalid token 2")
+	}
+	return sessionID, nil
 }
