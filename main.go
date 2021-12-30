@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/hmac"
 	"crypto/sha256"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"log"
@@ -31,7 +32,7 @@ func main() {
 	if checksession != session {
 		log.Printf("error in compare tokens, %v", err)
 	}
-	// log.Printf("token: %v, session: %v", token, checksession)
+	log.Printf("token: %v, session: %v", token, checksession)
 
 	http.HandleFunc("/", baseEndPoint)
 	http.HandleFunc("/register", registerEndPoint)
@@ -178,21 +179,25 @@ func createToken(sessionID string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("can't make hash for session")
 	}
-	token := sessionID + "." + string(mac.Sum(nil))
-	// log.Printf("token: %t", token)
+
+	token := sessionID + sep + base64.StdEncoding.EncodeToString([]byte(mac.Sum(nil)))
 	return token, nil
 }
 
 func parseToken(signedToken string) (string, error) {
 	ss := strings.Split(signedToken, sep)
-	if len(ss) <= 1 || len(ss) > 2 {
-		return "", fmt.Errorf("wrogn token format")
+	if len(ss) != 2 {
+		return "", fmt.Errorf("wrong token format")
 	}
 	sessionID := ss[0]
-	sessionMAC := []byte(ss[1])
+	// sessionMAC := ss[1]
+	sessionMAC, err := base64.StdEncoding.DecodeString(ss[1])
+	if err != nil {
+		return "", fmt.Errorf("can't decode token")
+	}
 
 	mac := hmac.New(sha256.New, keyHmac)
-	_, err := mac.Write([]byte(sessionID))
+	_, err = mac.Write([]byte(sessionID))
 	if err != nil {
 		return "", fmt.Errorf("invalid token 1")
 	}
