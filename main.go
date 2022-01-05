@@ -2,6 +2,7 @@ package main
 
 import (
 	"crypto/hmac"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
@@ -14,25 +15,26 @@ import (
 )
 
 var (
-	users          = make(map[string]string)
-	keyHmac []byte = []byte("some secret key")
-	sep     string = "."
+	users           = make(map[string]string)
+	keyHmac  []byte = []byte("some secret key")
+	sep      string = "."
+	sessions        = make(map[string]string)
 )
 
 func main() {
 	log.Println("Start progam")
 
 	log.Println("Check tokens")
-	session := "checksessionid"
-	token, err := createToken(session)
-	if err != nil {
-		log.Println("error in createToken %w", err)
-	}
-	checksession, err := parseToken(token)
-	if checksession != session {
-		log.Printf("error in compare tokens, %v", err)
-	}
-	log.Printf("token: %v, session: %v", token, checksession)
+	// session := "checksessionid"
+	// token, err := createToken(session)
+	// if err != nil {
+	// 	log.Println("error in createToken %w", err)
+	// }
+	// checksession, err := parseToken(token)
+	// if checksession != session {
+	// 	log.Printf("error in compare tokens, %v", err)
+	// }
+	// log.Printf("token: %v, session: %v", token, checksession)
 
 	http.HandleFunc("/", baseEndPoint)
 	http.HandleFunc("/register", registerEndPoint)
@@ -46,7 +48,23 @@ func main() {
 func baseEndPoint(w http.ResponseWriter, r *http.Request) {
 	log.Println("show Login Form")
 	log.Printf("Len of users %v \n", len(users))
-	// check if users exists
+	log.Printf("Len of sessions %v \n", len(sessions))
+	cookie, err := r.Cookie("access")
+	if err == nil {
+		//log.Println("cookie", cookie.Value)
+		session, err := parseToken(cookie.Value)
+		if err != nil {
+			log.Println("Can't parse token", err)
+		}
+		username := sessions[session]
+		if username != "" {
+			log.Printf("Username %v logged \n", username)
+			io.WriteString(w, "You are "+username+" Welcome!")
+			return
+		}
+	}
+
+	// redirect if no users exists
 	if len(users) == 0 {
 		http.Redirect(w, r, "/register", http.StatusSeeOther)
 		return
@@ -82,7 +100,26 @@ func loginEndPoint(w http.ResponseWriter, r *http.Request) {
 		io.WriteString(w, "You aren`t login!")
 		return
 	}
-	io.WriteString(w, "You are login!")
+	// io.WriteString(w, "You are login!")
+
+	// generate session id
+	b := make([]byte, 16)
+	_, err = io.ReadFull(rand.Reader, b)
+	if err != nil {
+		log.Fatalln("Can't create session id", err)
+	}
+	session := base64.URLEncoding.EncodeToString(b)
+	sessions[session] = username
+	// set cookie
+	token, err := createToken(session)
+	if err != nil {
+		log.Fatalln("Can't create token", err)
+	}
+
+	cookie := http.Cookie{Name: "access", Value: token}
+	http.SetCookie(w, &cookie)
+
+	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
 func registerEndPoint(w http.ResponseWriter, r *http.Request) {
