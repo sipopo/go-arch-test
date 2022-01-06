@@ -2,245 +2,220 @@ package main
 
 import (
 	"crypto/hmac"
-	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"strings"
 
+	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 )
 
-var (
-	users           = make(map[string]string)
-	keyHmac  []byte = []byte("some secret key")
-	sep      string = "."
-	sessions        = make(map[string]string)
-)
+type user struct {
+	password []byte
+	First    string
+}
+
+// key is email, value is user
+var db = map[string]user{}
+var sessions = map[string]string{}
+
+var key = []byte("my secret key 007 james bond rule the world from my mom's basement")
 
 func main() {
-	log.Println("Start progam")
-
-	log.Println("Check tokens")
-	// session := "checksessionid"
-	// token, err := createToken(session)
-	// if err != nil {
-	// 	log.Println("error in createToken %w", err)
-	// }
-	// checksession, err := parseToken(token)
-	// if checksession != session {
-	// 	log.Printf("error in compare tokens, %v", err)
-	// }
-	// log.Printf("token: %v, session: %v", token, checksession)
-
-	http.HandleFunc("/", baseEndPoint)
-	http.HandleFunc("/register", registerEndPoint)
-	http.HandleFunc("/login", loginEndPoint)
-
-	if http.ListenAndServe(":8080", nil) != nil {
-		log.Fatalln("Can't listen address")
-	}
+	http.HandleFunc("/", index)
+	http.HandleFunc("/register", register)
+	http.HandleFunc("/login", login)
+	http.ListenAndServe(":8080", nil)
 }
 
-func baseEndPoint(w http.ResponseWriter, r *http.Request) {
-	log.Println("show Login Form")
-	log.Printf("Len of users %v \n", len(users))
-	log.Printf("Len of sessions %v \n", len(sessions))
-	cookie, err := r.Cookie("access")
-	if err == nil {
-		//log.Println("cookie", cookie.Value)
-		session, err := parseToken(cookie.Value)
-		if err != nil {
-			log.Println("Can't parse token", err)
-		}
-		username := sessions[session]
-		if username != "" {
-			log.Printf("Username %v logged \n", username)
-			io.WriteString(w, "You are "+username+" Welcome!")
-			return
+func index(w http.ResponseWriter, r *http.Request) {
+	c, err := r.Cookie("sessionID")
+	if err != nil {
+		c = &http.Cookie{
+			Name:  "sessionID",
+			Value: "",
 		}
 	}
 
-	// redirect if no users exists
-	if len(users) == 0 {
-		http.Redirect(w, r, "/register", http.StatusSeeOther)
-		return
-	}
-	printAllUsers()
-	io.WriteString(w, showLoginForm())
-
-}
-
-func loginEndPoint(w http.ResponseWriter, r *http.Request) {
-	log.Println("loginEndPoint")
-	if r.Method != http.MethodPost {
-		http.Redirect(w, r, "/", http.StatusSeeOther)
-		return
-	}
-
-	username := r.PostFormValue("username")
-	password := r.PostFormValue("password")
-
-	if username == "" {
-		http.Redirect(w, r, "/", http.StatusSeeOther)
-		return
-	}
-
-	if users[username] == "" {
-		io.WriteString(w, showRegisterForm())
-		return
-	}
-
-	err := bcrypt.CompareHashAndPassword([]byte(users[username]), []byte(password))
+	s, err := parseToken(c.Value)
 	if err != nil {
-		log.Printf("user %v has a wrong password", username)
-		io.WriteString(w, "You aren`t login!")
-		return
-	}
-	// io.WriteString(w, "You are login!")
-
-	// generate session id
-	b := make([]byte, 16)
-	_, err = io.ReadFull(rand.Reader, b)
-	if err != nil {
-		log.Fatalln("Can't create session id", err)
-	}
-	session := base64.URLEncoding.EncodeToString(b)
-	sessions[session] = username
-	// set cookie
-	token, err := createToken(session)
-	if err != nil {
-		log.Fatalln("Can't create token", err)
+		log.Println("index parseToken", err)
 	}
 
-	cookie := http.Cookie{Name: "access", Value: token}
-	http.SetCookie(w, &cookie)
-
-	http.Redirect(w, r, "/", http.StatusSeeOther)
-}
-
-func registerEndPoint(w http.ResponseWriter, r *http.Request) {
-	log.Println("register web")
-	if r.Method != http.MethodPost {
-		io.WriteString(w, showRegisterForm())
-		return
+	var e string
+	if s != "" {
+		e = sessions[s]
 	}
 
-	username := r.PostFormValue("username")
-	password := r.PostFormValue("password")
-
-	if username == "" || password == "" {
-		log.Println("Empty data for register")
-		http.Redirect(w, r, "/", http.StatusSeeOther)
-		return
+	var f string
+	if user, ok := db[e]; ok {
+		f = user.First
 	}
-	hash, err := getHash([]byte(password))
-	if err != nil {
-		log.Printf("Can't get hash from password %v \n", err)
-		http.Redirect(w, r, "/", http.StatusSeeOther)
-		return
-	}
-	users[username] = string(hash)
-	printAllUsers()
-	http.Redirect(w, r, "/", http.StatusSeeOther)
-}
 
-func getHash(password []byte) ([]byte, error) {
-	hash, err := bcrypt.GenerateFromPassword(password, bcrypt.DefaultCost)
-	if err != nil {
-		return []byte(""), fmt.Errorf("can't generate hash %w", err)
-	}
-	return hash, nil
-}
+	errMsg := r.FormValue("msg")
 
-func printAllUsers() {
-	for u, p := range users {
-		log.Printf("username: %v, password: %v", u, p)
-	}
-}
-
-func showRegisterForm() string {
-	html := `<!DOCTYPE html>
+	fmt.Fprintf(w, `<!DOCTYPE html>
 	<html lang="en">
 	<head>
 		<meta charset="UTF-8">
 		<meta name="viewport" content="width=device-width, initial-scale=1.0">
 		<meta http-equiv="X-UA-Compatible" content="ie=edge">
-		<title>Reguster Form</title>
+		<title>Document</title>
 	</head>
 	<body>
-	    <label> Register Form </label>
-		<form action="/register" method="post">
-		    <label for="username">Username: </label>
-			<input type="username" id="username" name="username" /></br>
-			<label for="password">Password: </label>
-			<input type="password" id="password" name="password" /></br>
-			<input type="submit" />
-		</form>
+	<h1>IF YOU HAVE A SESSION, HERE IS YOUR NAME: %s</h1>
+	<h1>IF YOU HAVE A SESSION, HERE IS YOUR EMAIL: %s</h1>
+	<h1>IF THERE IS ANY MESSAGE FOR YOU, HERE IT IS: %s</h1>
+        <h1>REGISTER</h1>
+		<form action="/register" method="POST">
+		<label for="first">First</label>
+		<input type="text" name="first" placeholder="First" id="first">
+		<input type="email" name="e">
+			<input type="password" name="p">
+			<input type="submit">
+        </form>
+        <h1>LOG IN</h1>
+        <form action="/login" method="POST">
+            <input type="email" name="e">
+			<input type="password" name="p">
+			<input type="submit">
+        </form>
 	</body>
-	</html>`
-
-	return html
+	</html>`, f, e, errMsg)
 }
 
-func showLoginForm() string {
-	html := `<!DOCTYPE html>
-	<html lang="en">
-	<head>
-		<meta charset="UTF-8">
-		<meta name="viewport" content="width=device-width, initial-scale=1.0">
-		<meta http-equiv="X-UA-Compatible" content="ie=edge">
-		<title>Login Form</title>
-	</head>
-	<body>
-	 	<label> Login Form </label>
-		<form action="/login" method="post">
-		    <label for="username">Username: </label>
-			<input type="username" id="username" name="username" /></br>
-			<label for="password">Password: </label>
-			<input type="password" id="password" name="password" /></br>
-			<input type="submit" />
-		</form>
-	</body>
-	</html>`
+func register(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		msg := url.QueryEscape("your method was not post")
+		http.Redirect(w, r, "/?msg="+msg, http.StatusSeeOther)
+		return
+	}
 
-	return html
+	e := r.FormValue("e")
+	if e == "" {
+		msg := url.QueryEscape("your email needs to not be empty")
+		http.Redirect(w, r, "/?msg="+msg, http.StatusSeeOther)
+		return
+	}
+
+	p := r.FormValue("p")
+	if p == "" {
+		msg := url.QueryEscape("your email password needs to not be empty")
+		http.Redirect(w, r, "/?msg="+msg, http.StatusSeeOther)
+		return
+	}
+
+	f := r.FormValue("first")
+	if f == "" {
+		msg := url.QueryEscape("your first name needs to not be empty")
+		http.Redirect(w, r, "/?msg="+msg, http.StatusSeeOther)
+		return
+	}
+
+	bsp, err := bcrypt.GenerateFromPassword([]byte(p), bcrypt.DefaultCost)
+	if err != nil {
+		msg := "there was an internal server error - evil laugh: hahahahaha"
+		http.Error(w, msg, http.StatusInternalServerError)
+		return
+	}
+	log.Println("password", p)
+	log.Println("bcrypted", bsp)
+	db[e] = user{
+		password: bsp,
+		First:    f,
+	}
+
+	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
-func createToken(sessionID string) (string, error) {
-	mac := hmac.New(sha256.New, keyHmac)
-	_, err := mac.Write([]byte(sessionID))
-	if err != nil {
-		return "", fmt.Errorf("can't make hash for session")
+func login(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		msg := url.QueryEscape("your method was not post")
+		http.Redirect(w, r, "/?msg="+msg, http.StatusSeeOther)
+		return
 	}
 
-	token := sessionID + sep + base64.StdEncoding.EncodeToString([]byte(mac.Sum(nil)))
-	return token, nil
+	e := r.FormValue("e")
+	if e == "" {
+		msg := url.QueryEscape("your email needs to not be empty")
+		http.Redirect(w, r, "/?msg="+msg, http.StatusSeeOther)
+		return
+	}
+
+	p := r.FormValue("p")
+	if p == "" {
+		msg := url.QueryEscape("your email password needs to not be empty")
+		http.Redirect(w, r, "/?msg="+msg, http.StatusSeeOther)
+		return
+	}
+
+	if _, ok := db[e]; !ok {
+		msg := url.QueryEscape("your email or password didn't match")
+		http.Redirect(w, r, "/?msg="+msg, http.StatusSeeOther)
+		return
+	}
+
+	err := bcrypt.CompareHashAndPassword(db[e].password, []byte(p))
+	if err != nil {
+		msg := url.QueryEscape("your email or password didn't match")
+		http.Redirect(w, r, "/?msg="+msg, http.StatusSeeOther)
+		return
+	}
+
+	sUUID := uuid.New().String()
+	sessions[sUUID] = e
+	token := createToken(sUUID)
+
+	c := http.Cookie{
+		Name:  "sessionID",
+		Value: token,
+	}
+
+	http.SetCookie(w, &c)
+
+	msg := url.QueryEscape("you logged in " + e)
+	http.Redirect(w, r, "/?msg="+msg, http.StatusSeeOther)
 }
 
-func parseToken(signedToken string) (string, error) {
-	ss := strings.Split(signedToken, sep)
-	if len(ss) != 2 {
-		return "", fmt.Errorf("wrong token format")
-	}
-	sessionID := ss[0]
-	// sessionMAC := ss[1]
-	sessionMAC, err := base64.StdEncoding.DecodeString(ss[1])
-	if err != nil {
-		return "", fmt.Errorf("can't decode token")
+func createToken(sid string) string {
+	mac := hmac.New(sha256.New, key)
+	mac.Write([]byte(sid))
+
+	// to hex
+	// signedMac := fmt.Sprintf("%x", mac.Sum(nil))
+
+	// to base64
+	signedMac := base64.StdEncoding.EncodeToString(mac.Sum(nil))
+
+	// signedSessionID as base64 | created from sid
+	return signedMac + "|" + sid
+}
+
+func parseToken(ss string) (string, error) {
+	xs := strings.SplitN(ss, "|", 2)
+	if len(xs) != 2 {
+		return "", fmt.Errorf("stop hacking me wrong number of items in string parsetoken")
 	}
 
-	mac := hmac.New(sha256.New, keyHmac)
-	_, err = mac.Write([]byte(sessionID))
+	// SIGNEDSESSIONID AS BASE64 | created from sid
+	b64 := xs[0]
+	xb, err := base64.StdEncoding.DecodeString(b64)
 	if err != nil {
-		return "", fmt.Errorf("invalid token 1")
+		return "", fmt.Errorf("couldn't parseToken decodestring %w", err)
 	}
-	expectedMAC := mac.Sum(nil)
-	if !hmac.Equal(sessionMAC, expectedMAC) {
-		return "", fmt.Errorf("invalid token 2")
+
+	// signedSessionID as base64 | CREATED FROM SID
+	mac := hmac.New(sha256.New, key)
+	mac.Write([]byte(xs[1]))
+
+	ok := hmac.Equal(xb, mac.Sum(nil))
+	if !ok {
+		return "", fmt.Errorf("couldn't parseToken not equal signed sid and sid")
 	}
-	return sessionID, nil
+
+	return xs[1], nil
 }
