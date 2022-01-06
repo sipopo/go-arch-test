@@ -1,15 +1,13 @@
 package main
 
 import (
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/base64"
 	"fmt"
 	"log"
 	"net/http"
 	"net/url"
-	"strings"
+	"time"
 
+	"github.com/dgrijalva/jwt-go"
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -17,6 +15,11 @@ import (
 type user struct {
 	password []byte
 	First    string
+}
+
+type MyCustomClaims struct {
+	Session string `json:"session"`
+	jwt.StandardClaims
 }
 
 // key is email, value is user
@@ -182,40 +185,42 @@ func login(w http.ResponseWriter, r *http.Request) {
 }
 
 func createToken(sid string) string {
-	mac := hmac.New(sha256.New, key)
-	mac.Write([]byte(sid))
 
-	// to hex
-	// signedMac := fmt.Sprintf("%x", mac.Sum(nil))
+	// Create the Claims
+	claims := MyCustomClaims{
+		sid,
+		jwt.StandardClaims{
+			ExpiresAt: time.Now().Add(time.Minute * 10).Unix(),
+			Issuer:    "Local Issuer",
+		},
+	}
 
-	// to base64
-	signedMac := base64.StdEncoding.EncodeToString(mac.Sum(nil))
-
-	// signedSessionID as base64 | created from sid
-	return signedMac + "|" + sid
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	ss, err := token.SignedString(key)
+	if err != nil {
+		log.Println("Error in signed token", err)
+		return ""
+	}
+	return ss
 }
 
 func parseToken(ss string) (string, error) {
-	xs := strings.SplitN(ss, "|", 2)
-	if len(xs) != 2 {
-		return "", fmt.Errorf("stop hacking me wrong number of items in string parsetoken")
+	if ss == "" {
+		return "", fmt.Errorf("can't parse ss")
 	}
 
-	// SIGNEDSESSIONID AS BASE64 | created from sid
-	b64 := xs[0]
-	xb, err := base64.StdEncoding.DecodeString(b64)
+	token, err := jwt.ParseWithClaims(ss, &MyCustomClaims{}, func(token *jwt.Token) (interface{}, error) {
+		return key, nil
+	})
+
 	if err != nil {
-		return "", fmt.Errorf("couldn't parseToken decodestring %w", err)
+		return "", err
 	}
 
-	// signedSessionID as base64 | CREATED FROM SID
-	mac := hmac.New(sha256.New, key)
-	mac.Write([]byte(xs[1]))
-
-	ok := hmac.Equal(xb, mac.Sum(nil))
-	if !ok {
-		return "", fmt.Errorf("couldn't parseToken not equal signed sid and sid")
+	if claims, ok := token.Claims.(*MyCustomClaims); ok && token.Valid {
+		log.Printf("%v %v", claims.Session, claims.StandardClaims.ExpiresAt)
+		return claims.Session, nil
+	} else {
+		return "", err
 	}
-
-	return xs[1], nil
 }
