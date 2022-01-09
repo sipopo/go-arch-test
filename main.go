@@ -2,79 +2,225 @@ package main
 
 import (
 	"fmt"
-	"io/ioutil"
 	"log"
 	"net/http"
+	"net/url"
+	"time"
 
-	"golang.org/x/oauth2"
-	"golang.org/x/oauth2/yandex"
+	"github.com/dgrijalva/jwt-go"
+	"github.com/google/uuid"
+	"golang.org/x/crypto/bcrypt"
 )
 
-var yandexOauthConfig = &oauth2.Config{
-	ClientID:     "10087b9e83934a60ad9fb2bdcec9c67e",
-	ClientSecret: "6175da789e824edda426e86baed5e81c",
-	Endpoint:     yandex.Endpoint,
-	RedirectURL:  "http://localhost:8080/oauth/receive",
+type user struct {
+	password []byte
+	First    string
 }
 
-func main() {
+type MyCustomClaims struct {
+	Session string `json:"session"`
+	jwt.StandardClaims
+}
 
+// key is email, value is user
+var db = map[string]user{}
+var sessions = map[string]string{}
+
+var key = []byte("my secret key 007 james bond rule the world from my mom's basement")
+
+func main() {
 	http.HandleFunc("/", index)
-	http.HandleFunc("/oauth/yandex", startYandexOauth)
-	http.HandleFunc("/oauth/receive", completeYandexOauth)
+	http.HandleFunc("/register", register)
+	http.HandleFunc("/login", login)
 	http.ListenAndServe(":8080", nil)
 }
 
 func index(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprint(w, `<!DOCTYPE html>
-<html lang="en">
-<head>
-	<meta charset="UTF-8">
-	<title>Document</title>
-</head>
-<body>
-	<form action="/oauth/yandex" method="post">
-		<input type="submit" value="Login with Yandex">
-	</form>
-</body>
-</html>`)
+	c, err := r.Cookie("sessionID")
+	if err != nil {
+		c = &http.Cookie{
+			Name:  "sessionID",
+			Value: "",
+		}
+	}
+
+	s, err := parseToken(c.Value)
+	if err != nil {
+		log.Println("index parseToken", err)
+	}
+
+	var e string
+	if s != "" {
+		e = sessions[s]
+	}
+
+	var f string
+	if user, ok := db[e]; ok {
+		f = user.First
+	}
+
+	errMsg := r.FormValue("msg")
+
+	fmt.Fprintf(w, `<!DOCTYPE html>
+	<html lang="en">
+	<head>
+		<meta charset="UTF-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<meta http-equiv="X-UA-Compatible" content="ie=edge">
+		<title>Document</title>
+	</head>
+	<body>
+	<h1>IF YOU HAVE A SESSION, HERE IS YOUR NAME: %s</h1>
+	<h1>IF YOU HAVE A SESSION, HERE IS YOUR EMAIL: %s</h1>
+	<h1>IF THERE IS ANY MESSAGE FOR YOU, HERE IT IS: %s</h1>
+        <h1>REGISTER</h1>
+		<form action="/register" method="POST">
+		<label for="first">First</label>
+		<input type="text" name="first" placeholder="First" id="first">
+		<input type="email" name="e">
+			<input type="password" name="p">
+			<input type="submit">
+        </form>
+        <h1>LOG IN</h1>
+        <form action="/login" method="POST">
+            <input type="email" name="e">
+			<input type="password" name="p">
+			<input type="submit">
+        </form>
+	</body>
+	</html>`, f, e, errMsg)
 }
 
-func startYandexOauth(w http.ResponseWriter, r *http.Request) {
-	redirectURL := yandexOauthConfig.AuthCodeURL("MyState_00")
-	http.Redirect(w, r, redirectURL, http.StatusSeeOther)
+func register(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		msg := url.QueryEscape("your method was not post")
+		http.Redirect(w, r, "/?msg="+msg, http.StatusSeeOther)
+		return
+	}
+
+	e := r.FormValue("e")
+	if e == "" {
+		msg := url.QueryEscape("your email needs to not be empty")
+		http.Redirect(w, r, "/?msg="+msg, http.StatusSeeOther)
+		return
+	}
+
+	p := r.FormValue("p")
+	if p == "" {
+		msg := url.QueryEscape("your email password needs to not be empty")
+		http.Redirect(w, r, "/?msg="+msg, http.StatusSeeOther)
+		return
+	}
+
+	f := r.FormValue("first")
+	if f == "" {
+		msg := url.QueryEscape("your first name needs to not be empty")
+		http.Redirect(w, r, "/?msg="+msg, http.StatusSeeOther)
+		return
+	}
+
+	bsp, err := bcrypt.GenerateFromPassword([]byte(p), bcrypt.DefaultCost)
+	if err != nil {
+		msg := "there was an internal server error - evil laugh: hahahahaha"
+		http.Error(w, msg, http.StatusInternalServerError)
+		return
+	}
+	log.Println("password", p)
+	log.Println("bcrypted", bsp)
+	db[e] = user{
+		password: bsp,
+		First:    f,
+	}
+
+	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
-func completeYandexOauth(w http.ResponseWriter, r *http.Request) {
-	code := r.FormValue("code")
-	state := r.FormValue("state")
-
-	if state != "MyState_00" {
-		http.Error(w, "State is incorrect", http.StatusBadRequest)
+func login(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		msg := url.QueryEscape("your method was not post")
+		http.Redirect(w, r, "/?msg="+msg, http.StatusSeeOther)
 		return
 	}
 
-	token, err := yandexOauthConfig.Exchange(r.Context(), code)
+	e := r.FormValue("e")
+	if e == "" {
+		msg := url.QueryEscape("your email needs to not be empty")
+		http.Redirect(w, r, "/?msg="+msg, http.StatusSeeOther)
+		return
+	}
+
+	p := r.FormValue("p")
+	if p == "" {
+		msg := url.QueryEscape("your email password needs to not be empty")
+		http.Redirect(w, r, "/?msg="+msg, http.StatusSeeOther)
+		return
+	}
+
+	if _, ok := db[e]; !ok {
+		msg := url.QueryEscape("your email or password didn't match")
+		http.Redirect(w, r, "/?msg="+msg, http.StatusSeeOther)
+		return
+	}
+
+	err := bcrypt.CompareHashAndPassword(db[e].password, []byte(p))
 	if err != nil {
-		http.Error(w, "Couldn't login", http.StatusInternalServerError)
+		msg := url.QueryEscape("your email or password didn't match")
+		http.Redirect(w, r, "/?msg="+msg, http.StatusSeeOther)
 		return
 	}
 
-	ts := yandexOauthConfig.TokenSource(r.Context(), token)
-	client := oauth2.NewClient(r.Context(), ts)
+	sUUID := uuid.New().String()
+	sessions[sUUID] = e
+	token := createToken(sUUID)
 
-	resp, err := client.Get("https://login.yandex.ru/info?with_openid_identity=1")
+	c := http.Cookie{
+		Name:  "sessionID",
+		Value: token,
+	}
+
+	http.SetCookie(w, &c)
+
+	msg := url.QueryEscape("you logged in " + e)
+	http.Redirect(w, r, "/?msg="+msg, http.StatusSeeOther)
+}
+
+func createToken(sid string) string {
+
+	// Create the Claims
+	claims := MyCustomClaims{
+		sid,
+		jwt.StandardClaims{
+			ExpiresAt: time.Now().Add(time.Minute * 10).Unix(),
+			Issuer:    "Local Issuer",
+		},
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	ss, err := token.SignedString(key)
 	if err != nil {
-		http.Error(w, "Couldn't get user", http.StatusInternalServerError)
-		return
+		log.Println("Error in signed token", err)
+		return ""
 	}
-	defer resp.Body.Close()
+	return ss
+}
 
-	bs, err := ioutil.ReadAll(resp.Body)
+func parseToken(ss string) (string, error) {
+	if ss == "" {
+		return "", fmt.Errorf("can't parse ss")
+	}
+
+	token, err := jwt.ParseWithClaims(ss, &MyCustomClaims{}, func(token *jwt.Token) (interface{}, error) {
+		return key, nil
+	})
+
 	if err != nil {
-		http.Error(w, "Couldn't read github information", http.StatusInternalServerError)
-		return
+		return "", err
 	}
 
-	log.Println(string(bs))
+	if claims, ok := token.Claims.(*MyCustomClaims); ok && token.Valid {
+		log.Printf("%v %v", claims.Session, claims.StandardClaims.ExpiresAt)
+		return claims.Session, nil
+	} else {
+		return "", err
+	}
 }
