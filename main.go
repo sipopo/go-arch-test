@@ -26,6 +26,8 @@ func main() {
 	http.HandleFunc("/register", register)
 	http.HandleFunc("/login", login)
 	http.HandleFunc("/logout", logout)
+	http.HandleFunc("/oauth/yandex/login", startYandexOauth)
+	http.HandleFunc("/oauth/yandex/receive", completeYandexOauth)
 	http.ListenAndServe(":8080", nil)
 }
 
@@ -80,6 +82,10 @@ func index(w http.ResponseWriter, r *http.Request) {
             <input type="email" name="e">
 			<input type="password" name="p">
 			<input type="submit">
+		</form>
+		</p>
+		<form action="/oauth/yandex/login" method="post">
+			<input type="submit" value="Login with Yandex">
 		</form>
 		<h1>LOGOUT</h1>
 		<form action="/logout" method="POST">
