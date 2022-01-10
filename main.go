@@ -5,9 +5,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
-	"time"
 
-	"github.com/dgrijalva/jwt-go"
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -17,21 +15,17 @@ type user struct {
 	First    string
 }
 
-type MyCustomClaims struct {
-	Session string `json:"session"`
-	jwt.StandardClaims
-}
-
 // key is email, value is user
 var db = map[string]user{}
-var sessions = map[string]string{}
 
-var key = []byte("my secret key 007 james bond rule the world from my mom's basement")
+// key is sessionid, value is email
+var sessions = map[string]string{}
 
 func main() {
 	http.HandleFunc("/", index)
 	http.HandleFunc("/register", register)
 	http.HandleFunc("/login", login)
+	http.HandleFunc("/logout", logout)
 	http.ListenAndServe(":8080", nil)
 }
 
@@ -44,14 +38,14 @@ func index(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	s, err := parseToken(c.Value)
+	sID, err := parseToken(c.Value)
 	if err != nil {
 		log.Println("index parseToken", err)
 	}
 
 	var e string
-	if s != "" {
-		e = sessions[s]
+	if sID != "" {
+		e = sessions[sID]
 	}
 
 	var f string
@@ -86,7 +80,11 @@ func index(w http.ResponseWriter, r *http.Request) {
             <input type="email" name="e">
 			<input type="password" name="p">
 			<input type="submit">
-        </form>
+		</form>
+		<h1>LOGOUT</h1>
+		<form action="/logout" method="POST">
+		<input type="submit" value="LOGOUT">
+	</form>
 	</body>
 	</html>`, f, e, errMsg)
 }
@@ -171,7 +169,13 @@ func login(w http.ResponseWriter, r *http.Request) {
 
 	sUUID := uuid.New().String()
 	sessions[sUUID] = e
-	token := createToken(sUUID)
+	token, err := createToken(sUUID)
+	if err != nil {
+		log.Println("couldn't createToken in login", err)
+		msg := url.QueryEscape("our server didn't get enough lunch and is not working 200% right now. Try bak later")
+		http.Redirect(w, r, "/?msg="+msg, http.StatusSeeOther)
+		return
+	}
 
 	c := http.Cookie{
 		Name:  "sessionID",
@@ -184,43 +188,29 @@ func login(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/?msg="+msg, http.StatusSeeOther)
 }
 
-func createToken(sid string) string {
-
-	// Create the Claims
-	claims := MyCustomClaims{
-		sid,
-		jwt.StandardClaims{
-			ExpiresAt: time.Now().Add(time.Minute * 10).Unix(),
-			Issuer:    "Local Issuer",
-		},
+func logout(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
 	}
 
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	ss, err := token.SignedString(key)
+	c, err := r.Cookie("sessionID")
 	if err != nil {
-		log.Println("Error in signed token", err)
-		return ""
-	}
-	return ss
-}
-
-func parseToken(ss string) (string, error) {
-	if ss == "" {
-		return "", fmt.Errorf("can't parse ss")
+		c = &http.Cookie{
+			Name:  "sessionID",
+			Value: "",
+		}
 	}
 
-	token, err := jwt.ParseWithClaims(ss, &MyCustomClaims{}, func(token *jwt.Token) (interface{}, error) {
-		return key, nil
-	})
-
+	sID, err := parseToken(c.Value)
 	if err != nil {
-		return "", err
+		log.Println("index parseToken", err)
 	}
 
-	if claims, ok := token.Claims.(*MyCustomClaims); ok && token.Valid {
-		log.Printf("%v %v", claims.Session, claims.StandardClaims.ExpiresAt)
-		return claims.Session, nil
-	} else {
-		return "", err
-	}
+	delete(sessions, sID)
+
+	c.MaxAge = -1
+
+	http.SetCookie(w, c)
+	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
