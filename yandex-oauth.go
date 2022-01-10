@@ -20,6 +20,11 @@ var yandexOauthConfig = &oauth2.Config{
 }
 
 func startYandexOauth(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
+
 	state := uuid.New().String()
 	states[state] = time.Now().Add(1 * time.Hour)
 
