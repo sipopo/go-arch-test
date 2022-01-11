@@ -6,11 +6,23 @@ import (
 	"net/http"
 	"net/url"
 	"time"
+	"encoding/json"
 
 	"github.com/google/uuid"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/yandex"
 )
+
+
+// {"id": "...", "login": "...", "client_id": "", "openid_identities": ["..."], "psuid": "..."}
+
+type yandexResponse struct {
+	ID string `json: "id"`
+	Login string `json: "login"`
+	ClientID string `json: "client_id"`
+	OpenidIdentities []string `json: "openid_identities"`
+	Psuid string `json: "psuid"`
+}
 
 var states = map[string]time.Time{}
 
@@ -72,7 +84,9 @@ func completeYandexOauth(w http.ResponseWriter, r *http.Request) {
 
 	resp, err := client.Get("https://login.yandex.ru/info?with_openid_identity=1")
 	if err != nil {
-		http.Error(w, "Couldn't get user", http.StatusInternalServerError)
+		msg := url.QueryEscape("can't do exchage: " + err.Error())
+		http.Redirect(w, r, "/?msg="+msg, http.StatusSeeOther)
+		// http.Error(w, "Couldn't get user", http.StatusInternalServerError)
 		return
 	}
 	defer resp.Body.Close()
@@ -83,5 +97,20 @@ func completeYandexOauth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	reader := Reader.NewReader(string(bs))
 	log.Println(string(bs))
+	log.Printf("%T : %v", bs, bs)
+	log.Printf("%T : %v", resp.Body, resp.Body)
+
+	var yar yandexResponse
+
+	err = json.NewDecoder(reader).Decode(&yar)
+	if err != nil {
+		http.Error(w, "Couldn't decode JSON" + err.Error(), http.StatusInternalServerError)
+		log.Println(err)
+		return
+	}
+
+	yandexID := yar.ID
+	log.Println("Print yandex id only", yandexID)
 }

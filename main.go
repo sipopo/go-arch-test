@@ -18,6 +18,9 @@ type user struct {
 // key is email, value is user
 var db = map[string]user{}
 
+// key is user id from oath, value id in my own system
+var oauthConnections = map[string]string{}
+
 // key is sessionid, value is email
 var sessions = map[string]string{}
 
