@@ -1,6 +1,7 @@
 package main
 
 import (
+	"io/ioutil"
 	"log"
 	"net/http"
 	"time"
@@ -26,7 +27,7 @@ func startYandexOauth(w http.ResponseWriter, r *http.Request) {
 	}
 
 	state := uuid.New().String()
-	states[state] = time.Now().Add(1 * time.Hour)
+	states[state] = time.Now().Add(1 * time.Minute)
 
 	log.Println(state)
 	redirectURL := yandexOauthConfig.AuthCodeURL(state)
@@ -37,33 +38,34 @@ func completeYandexOauth(w http.ResponseWriter, r *http.Request) {
 	code := r.FormValue("code")
 	state := r.FormValue("state")
 
-	log.Println(code, state)
-	// if state != "MyState_00" {
-	// 	http.Error(w, "State is incorrect", http.StatusBadRequest)
-	// 	return
-	// }
-	//
-	// token, err := yandexOauthConfig.Exchange(r.Context(), code)
-	// if err != nil {
-	// 	http.Error(w, "Couldn't login", http.StatusInternalServerError)
-	// 	return
-	// }
-	//
-	// ts := yandexOauthConfig.TokenSource(r.Context(), token)
-	// client := oauth2.NewClient(r.Context(), ts)
-	//
-	// resp, err := client.Get("https://login.yandex.ru/info?with_openid_identity=1")
-	// if err != nil {
-	// 	http.Error(w, "Couldn't get user", http.StatusInternalServerError)
-	// 	return
-	// }
-	// defer resp.Body.Close()
-	//
-	// bs, err := ioutil.ReadAll(resp.Body)
-	// if err != nil {
-	// 	http.Error(w, "Couldn't read github information", http.StatusInternalServerError)
-	// 	return
-	// }
-	//
-	// log.Println(string(bs))
+	// log.Println(code, state)
+	if time.Now().After(states[state]) {
+		http.Error(w, "State is incorrect", http.StatusBadRequest)
+		log.Printf("State %v is expired ", state)
+		return
+	}
+
+	token, err := yandexOauthConfig.Exchange(r.Context(), code)
+	if err != nil {
+		http.Error(w, "Couldn't login", http.StatusInternalServerError)
+		return
+	}
+
+	ts := yandexOauthConfig.TokenSource(r.Context(), token)
+	client := oauth2.NewClient(r.Context(), ts)
+
+	resp, err := client.Get("https://login.yandex.ru/info?with_openid_identity=1")
+	if err != nil {
+		http.Error(w, "Couldn't get user", http.StatusInternalServerError)
+		return
+	}
+	defer resp.Body.Close()
+
+	bs, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		http.Error(w, "Couldn't read github information", http.StatusInternalServerError)
+		return
+	}
+
+	log.Println(string(bs))
 }
