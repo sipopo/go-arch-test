@@ -4,6 +4,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/google/uuid"
@@ -38,16 +39,31 @@ func completeYandexOauth(w http.ResponseWriter, r *http.Request) {
 	code := r.FormValue("code")
 	state := r.FormValue("state")
 
+	if code == "" {
+		msg := url.QueryEscape("the code is empty")
+		http.Redirect(w, r, "/?msg="+msg, http.StatusSeeOther)
+		return
+	}
+
+	if state == "" {
+		msg := url.QueryEscape("the state is empty")
+		http.Redirect(w, r, "/?msg="+msg, http.StatusSeeOther)
+		return
+	}
 	// log.Println(code, state)
+
 	if time.Now().After(states[state]) {
-		http.Error(w, "State is incorrect", http.StatusBadRequest)
+		msg := url.QueryEscape("the state is expired")
+		http.Redirect(w, r, "/?msg="+msg, http.StatusSeeOther)
 		log.Printf("State %v is expired ", state)
 		return
 	}
 
 	token, err := yandexOauthConfig.Exchange(r.Context(), code)
 	if err != nil {
-		http.Error(w, "Couldn't login", http.StatusInternalServerError)
+		msg := url.QueryEscape("can't do exchage: " + err.Error())
+		http.Redirect(w, r, "/?msg="+msg, http.StatusSeeOther)
+		// http.Error(w, "Couldn't login", http.StatusInternalServerError)
 		return
 	}
 
@@ -63,7 +79,7 @@ func completeYandexOauth(w http.ResponseWriter, r *http.Request) {
 
 	bs, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		http.Error(w, "Couldn't read github information", http.StatusInternalServerError)
+		http.Error(w, "Couldn't read yandex information", http.StatusInternalServerError)
 		return
 	}
 
