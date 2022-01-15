@@ -176,12 +176,9 @@ func login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sUUID := uuid.New().String()
-	sessions[sUUID] = e
-	token, err := createToken(sUUID)
+	token, err := createSession(e)
 	if err != nil {
-		log.Println("couldn't createToken in login", err)
-		msg := url.QueryEscape("our server didn't get enough lunch and is not working 200% right now. Try bak later")
+		msg := url.QueryEscape("cound't create token in login")
 		http.Redirect(w, r, "/?msg="+msg, http.StatusSeeOther)
 		return
 	}
@@ -195,6 +192,21 @@ func login(w http.ResponseWriter, r *http.Request) {
 
 	msg := url.QueryEscape("you logged in " + e)
 	http.Redirect(w, r, "/?msg="+msg, http.StatusSeeOther)
+
+}
+
+//createSession Create session for e (login or email)
+// return token
+func createSession(e string) (string, error) {
+	sUUID := uuid.New().String()
+	sessions[sUUID] = e
+	token, err := createToken(sUUID)
+	if err != nil {
+		log.Println("couldn't createToken in createSession:" + err.Error())
+		return "", fmt.Errorf("coudn't create Token for session")
+	}
+	log.Println("session created")
+	return token, nil
 }
 
 func logout(w http.ResponseWriter, r *http.Request) {

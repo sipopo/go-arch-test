@@ -1,27 +1,27 @@
 package main
 
 import (
+	"encoding/json"
 	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
-	"encoding/json"
 
 	"github.com/google/uuid"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/yandex"
 )
 
-
 // {"id": "...", "login": "...", "client_id": "", "openid_identities": ["..."], "psuid": "..."}
 
 type yandexResponse struct {
-	ID string `json: "id"`
-	Login string `json: "login"`
-	ClientID string `json: "client_id"`
+	ID               string   `json: "id"`
+	Login            string   `json: "login"`
+	ClientID         string   `json: "client_id"`
 	OpenidIdentities []string `json: "openid_identities"`
-	Psuid string `json: "psuid"`
+	Psuid            string   `json: "psuid"`
 }
 
 var states = map[string]time.Time{}
@@ -97,20 +97,48 @@ func completeYandexOauth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	reader := Reader.NewReader(string(bs))
-	log.Println(string(bs))
-	log.Printf("%T : %v", bs, bs)
-	log.Printf("%T : %v", resp.Body, resp.Body)
+	// reader := Reader.NewReader(string(bs))
+	// log.Println(string(bs))
+	// log.Printf("%T : %v", bs, bs)
+	// log.Printf("%T : %v", resp.Body, resp.Body)
 
 	var yar yandexResponse
 
-	err = json.NewDecoder(reader).Decode(&yar)
+	err = json.NewDecoder(strings.NewReader(string(bs))).Decode(&yar)
 	if err != nil {
-		http.Error(w, "Couldn't decode JSON" + err.Error(), http.StatusInternalServerError)
-		log.Println(err)
+		http.Error(w, "Couldn't decode JSON: "+err.Error(), http.StatusInternalServerError)
+		log.Println("Couldn't decode JSON: " + err.Error())
 		return
 	}
 
 	yandexID := yar.ID
 	log.Println("Print yandex id only", yandexID)
+
+	userID, ok := oauthConnections[yandexID]
+	if !ok {
+		userID = yar.Login + "@yandex.ru"
+	}
+	log.Println("user id :", userID)
+	sessionToken, err := createSession(userID)
+	if err != nil {
+		msg := url.QueryEscape("cound't create session in completeYandexOauth")
+		http.Redirect(w, r, "/?msg="+msg, http.StatusSeeOther)
+		return
+	}
+
+	log.Printf("sessionToken is %v", sessionToken)
+
+	c := http.Cookie{
+		Name:  "sessionID",
+		Value: sessionToken,
+		Path:  "/",
+	}
+
+	http.SetCookie(w, &c)
+	//http.SetCookie(w, &c2)
+
+	log.Println("Cooklie : " + c.String())
+
+	msg := url.QueryEscape("you logged in " + userID)
+	http.Redirect(w, r, "/?msg="+msg, http.StatusSeeOther)
 }

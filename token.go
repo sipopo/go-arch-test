@@ -19,7 +19,7 @@ func createToken(sid string) (string, error) {
 
 	cc := customClaims{
 		StandardClaims: jwt.StandardClaims{
-			ExpiresAt: time.Now().Add(5 * time.Minute).Unix(),
+			ExpiresAt: time.Now().Add(15 * time.Minute).Unix(),
 		},
 		SID: sid,
 	}
@@ -41,7 +41,7 @@ func parseToken(st string) (string, error) {
 	})
 
 	if err != nil {
-		return "", fmt.Errorf("couldn't ParseWithClaims in parseToken %w", err)
+		return "", fmt.Errorf("couldn't ParseWithClaims in parseToken: %w", err)
 	}
 
 	if !token.Valid {
