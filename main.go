@@ -29,6 +29,7 @@ func main() {
 	http.HandleFunc("/register", register)
 	http.HandleFunc("/login", login)
 	http.HandleFunc("/logout", logout)
+	http.HandleFunc("/partial-register", partialRegister)
 	http.HandleFunc("/oauth/yandex/login", startYandexOauth)
 	http.HandleFunc("/oauth/yandex/receive", completeYandexOauth)
 	http.ListenAndServe(":8080", nil)
@@ -87,7 +88,7 @@ func index(w http.ResponseWriter, r *http.Request) {
 			<input type="submit">
 		</form>
 		</p>
-		<form action="/oauth/yandex/login" method="post">
+		<form action="/oauth/yandex/login" method="POST">
 			<input type="submit" value="Login with Yandex">
 		</form>
 		<h1>LOGOUT</h1>
@@ -96,6 +97,49 @@ func index(w http.ResponseWriter, r *http.Request) {
 	</form>
 	</body>
 	</html>`, f, e, errMsg)
+}
+
+
+func partialRegister(w http.ResponseWriter, r *http.Request) {
+	name := r.FormValue("name")
+	if name == "" {
+		msg := url.QueryEscape("No name information")
+		http.Redirect(w, r, "/?msg="+msg, http.StatusSeeOther)
+	}
+	
+	email := r.FormValue("email")
+	if email == "" {
+		msg := url.QueryEscape("No email information")
+		http.Redirect(w, r, "/?msg="+msg, http.StatusSeeOther)
+	}
+
+	signedUserID := r.FormValue("signedUserID")
+	if signedUserID == "" {
+		msg := url.QueryEscape("No signedUserDI information")
+		http.Redirect(w, r, "/?msg="+msg, http.StatusSeeOther)
+	}
+
+	fmt.Fprintf(w,`<!DOCTYPE html>
+	<html lang="en">
+	<head>
+		<meta charset="UTF-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<meta http-equiv="X-UA-Compatible" content="ie=edge">
+		<title>Document</title>
+	</head>
+	<body>
+		<h1>Partial-REGISTER</h1>
+		<form action="/oauth/yandex/register" method="POST">
+		<label for="first">First</label>
+		<input type="text" name="first" placeholder="First" id="first" value="%s">
+		<input type="email" name="email" value="%s">
+		<input type="hidden" name="signedUserID" value="%s">
+		<input type="submit" value="register">
+		</form>
+	</body>
+	</html>
+	`, name, email, signedUserID)
+
 }
 
 func register(w http.ResponseWriter, r *http.Request) {

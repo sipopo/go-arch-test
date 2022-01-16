@@ -116,8 +116,21 @@ func completeYandexOauth(w http.ResponseWriter, r *http.Request) {
 
 	userID, ok := oauthConnections[yandexID]
 	if !ok {
-		userID = yar.Login + "@yandex.ru"
+		signedUserID, err := createToken(yandexID)
+		if err != nil {
+			msg := url.QueryEscape("cound't create token for yandexID")
+			http.Redirect(w, r, "/?msg="+msg, http.StatusSeeOther)
+			return
+		}
+
+		name := url.QueryEscape(yar.Login)
+		email := url.QueryEscape(yar.Login + "@yandex.ru")
+		signedUserID = url.QueryEscape(signedUserID)
+		redirectURL := "/partial-register?name="+name+"&email="+email+"&signedUserID="+signedUserID
+		http.Redirect(w, r, redirectURL, http.StatusTemporaryRedirect)
+		return
 	}
+	
 	log.Println("user id :", userID)
 	sessionToken, err := createSession(userID)
 	if err != nil {
@@ -135,7 +148,6 @@ func completeYandexOauth(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.SetCookie(w, &c)
-	//http.SetCookie(w, &c2)
 
 	log.Println("Cooklie : " + c.String())
 
