@@ -105,13 +105,23 @@ func partialRegister(w http.ResponseWriter, r *http.Request) {
 	if name == "" {
 		msg := url.QueryEscape("No name information")
 		http.Redirect(w, r, "/?msg="+msg, http.StatusSeeOther)
+		return
 	}
 	
+
 	email := r.FormValue("email")
 	if email == "" {
 		msg := url.QueryEscape("No email information")
 		http.Redirect(w, r, "/?msg="+msg, http.StatusSeeOther)
+		return
 	}
+	email, err := url.QueryUnescape(email)
+	if err != nil {
+		msg := url.QueryEscape("can't recognize email")
+		http.Redirect(w, r, "/?msg="+msg, http.StatusSeeOther)
+		return
+	}
+
 
 	signedUserID := r.FormValue("signedUserID")
 	if signedUserID == "" {
@@ -130,8 +140,9 @@ func partialRegister(w http.ResponseWriter, r *http.Request) {
 	<body>
 		<h1>Partial-REGISTER</h1>
 		<form action="/oauth/yandex/register" method="POST">
-		<label for="first">First</label>
+		<label for="first">First Name</label>
 		<input type="text" name="first" placeholder="First" id="first" value="%s">
+		<label for="email">Email</label>
 		<input type="email" name="email" value="%s">
 		<input type="hidden" name="signedUserID" value="%s">
 		<input type="submit" value="register">

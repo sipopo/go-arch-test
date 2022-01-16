@@ -126,8 +126,14 @@ func completeYandexOauth(w http.ResponseWriter, r *http.Request) {
 		name := url.QueryEscape(yar.Login)
 		email := url.QueryEscape(yar.Login + "@yandex.ru")
 		signedUserID = url.QueryEscape(signedUserID)
-		redirectURL := "/partial-register?name="+name+"&email="+email+"&signedUserID="+signedUserID
-		http.Redirect(w, r, redirectURL, http.StatusTemporaryRedirect)
+		// redirectURL := "/partial-register?name="+name+"&email="+email+"&signedUserID="+signedUserID
+		
+		uv := url.Values{}
+		uv.Add("name", name)
+		uv.Add("email", email)
+		uv.Add("signedUserID", signedUserID)
+
+		http.Redirect(w, r, "/partial-register?"+uv.Encode() , http.StatusTemporaryRedirect)
 		return
 	}
 	
