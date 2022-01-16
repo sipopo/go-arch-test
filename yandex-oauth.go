@@ -160,3 +160,65 @@ func completeYandexOauth(w http.ResponseWriter, r *http.Request) {
 	msg := url.QueryEscape("you logged in " + userID)
 	http.Redirect(w, r, "/?msg="+msg, http.StatusSeeOther)
 }
+
+
+func registerYandexOauth(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		msg := url.QueryEscape("worgn request for registerYandex")
+		http.Redirect(w, r, "/?msg="+msg, http.StatusSeeOther)
+		return
+	}
+
+	signedUserID, err :=  url.QueryUnescape(r.FormValue("signedUserID"))
+	if err != nil || signedUserID == "" {
+		msg := url.QueryEscape("can't get signedUserID")
+		http.Redirect(w, r, "/?msg="+msg, http.StatusSeeOther)
+		return
+	}
+
+	UserID, err := parseToken(signedUserID)
+	if err != nil{
+		msg := url.QueryEscape("can't parse parseToken in register")
+		log.Println("can't parse parseToken in register :" + err.Error())
+		http.Redirect(w, r, "/?msg="+msg, http.StatusSeeOther)
+		return
+	}
+
+	email, err := url.QueryUnescape(r.FormValue("email"))
+	if err != nil || email == "" {
+		msg := url.QueryEscape("can't get email")
+		http.Redirect(w, r, "/?msg="+msg, http.StatusSeeOther)
+		return
+	}
+
+	first, err := url.QueryUnescape(r.FormValue("first"))
+	if err != nil || first == "" {
+		msg := url.QueryEscape("can't get first namae")
+		http.Redirect(w, r, "/?msg="+msg, http.StatusSeeOther)
+		return
+	}
+
+	db[email] = user{
+		First: first,
+	}
+
+	oauthConnections[UserID] = email
+
+	token, err := createSession(email)
+	if err != nil {
+		msg := url.QueryEscape("cound't create token in login")
+		http.Redirect(w, r, "/?msg="+msg, http.StatusSeeOther)
+		return
+	}
+
+	c := http.Cookie{
+		Name:  "sessionID",
+		Value: token,
+		Path: "/",
+	}
+
+	http.SetCookie(w, &c)
+
+	msg := url.QueryEscape("you logged in " + email)
+	http.Redirect(w, r, "/?msg="+msg, http.StatusSeeOther)
+}

@@ -32,6 +32,7 @@ func main() {
 	http.HandleFunc("/partial-register", partialRegister)
 	http.HandleFunc("/oauth/yandex/login", startYandexOauth)
 	http.HandleFunc("/oauth/yandex/receive", completeYandexOauth)
+	http.HandleFunc("/oauth/yandex/register", registerYandexOauth)
 	http.ListenAndServe(":8080", nil)
 }
 
@@ -140,8 +141,8 @@ func partialRegister(w http.ResponseWriter, r *http.Request) {
 	<body>
 		<h1>Partial-REGISTER</h1>
 		<form action="/oauth/yandex/register" method="POST">
-		<label for="first">First Name</label>
-		<input type="text" name="first" placeholder="First" id="first" value="%s">
+		<label for="First">First Name</label>
+		<input type="text" name="first" placeholder="First" id="First" value="%s">
 		<label for="email">Email</label>
 		<input type="email" name="email" value="%s">
 		<input type="hidden" name="signedUserID" value="%s">
